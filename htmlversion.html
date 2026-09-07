@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SIMD & crypto acceleration timeline — x86 and Arm, 2010–2024</title>
+<style>
+  body{font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#222;max-width:780px;margin:2rem auto;padding:0 1rem}
+  h1{font-size:1.25rem;margin:0 0 .25rem}
+  p.legend{font-size:.85rem;color:#555;margin:.25rem 0 .75rem}
+  .bar{display:flex;gap:.35rem;align-items:center;font-size:.8rem;margin:0 0 .6rem;flex-wrap:wrap}
+  .bar button{font:inherit;padding:.2rem .6rem;border:1px solid #ccc;border-radius:4px;background:#fafafa;cursor:pointer}
+  .bar button.on{background:#1c5fbf;color:#fff;border-color:#1c5fbf}
+  .bar .sp{flex:1}
+  .hide{display:none!important}
+
+  /* ---- table view: every year row is exactly the same height ---- */
+  table{border-collapse:collapse;width:100%;table-layout:fixed}
+  th,td{padding:0 .4rem;text-align:center;border-bottom:1px solid #eee;white-space:nowrap;overflow:hidden;height:2rem}
+  th{font-size:.7rem;letter-spacing:.04em;text-transform:uppercase;color:#666;border-bottom:2px solid #ddd;height:1.8rem}
+  col.year{width:3.6em} col.arch{width:5.8em} col.tog{width:2.6em}
+  td.year{font-weight:600;text-align:right;color:#333}
+  td.arch{color:#666;font-size:.85rem}
+  tr.ev{cursor:pointer} tr.ev:hover td{background:#f6f8fb}
+  tr.quiet td.year{color:#c4c4c4;font-weight:500}
+  .chk{color:#0a7d2c;font-weight:700} .simd .chk{color:#1c5fbf}
+  .tog{color:#1c5fbf;font-size:.8rem}
+  .n{display:inline-block;min-width:1.1em;padding:0 .3em;border-radius:.6em;background:#e3ebf7;color:#1c5fbf;font-size:.7rem;margin-left:.15rem;vertical-align:1px}
+  tr.sub td,tr.desc td{background:#fafafa}
+  tr.sub td{border-bottom:0;height:1.7rem;font-size:.9rem}
+  tr.sub td.arch{color:#444}
+  tr.desc td{text-align:left;white-space:normal;height:auto;font-size:.86rem;color:#444;padding:.1rem 1rem .55rem 4.4rem;line-height:1.35}
+  tr.desc b{color:#222}
+
+  /* ---- timeline view ---- */
+  svg{width:100%;height:auto;display:block;font:12px system-ui,sans-serif}
+  .lane{stroke:#eee} .tick{stroke:#f3f3f3}
+  .lab{fill:#555;font-size:12px}
+  .yr{fill:#666;font-size:10.5px;text-anchor:middle}
+  .dot{cursor:pointer;stroke:#fff;stroke-width:1.5}
+  .dot:hover{stroke:#222}
+  .x86{fill:#d9480f} .arm{fill:#1c5fbf}
+  .key{font-size:.8rem;color:#555;display:flex;gap:1rem;margin:.4rem 0;flex-wrap:wrap}
+  .key i{display:inline-block;width:.7em;height:.7em;margin-right:.35em;vertical-align:-1px}
+  .key .kx{background:#d9480f;border-radius:50%} .key .ka{background:#1c5fbf;border-radius:1px}
+  .tip{position:absolute;max-width:300px;background:#222;color:#fff;font-size:.8rem;line-height:1.35;padding:.45rem .6rem;border-radius:5px;pointer-events:none;display:none;z-index:9}
+  .tip b{color:#ffd591}
+  footer{font-size:.78rem;color:#777;margin-top:1rem}
+</style>
+</head>
+<body>
+<h1>SIMD &amp; crypto acceleration timeline — x86 and Arm</h1>
+<p class="legend"><span class="chk">✓</span> = this change added, or substantially improved, support. Blank = nothing new for that column in that change (support may already have existed). <span class="simd"><span class="chk">✓</span></span> in SIMD ≈ a doubling of vector width, a doubling of vector execution width, or a new scalable-vector architecture. A year with several events shows the union of their ✓s; click it to see each event.</p>
+
+<div class="bar">
+  <button id="bTab" class="on" onclick="view('tab')">Table</button><button id="bTl" onclick="view('tl')">Timeline</button>
+  <span class="sp"></span>
+  <span id="tabCtl"><button onclick="setAll(true)">Expand all</button><button onclick="setAll(false)">Collapse all</button></span>
+</div>
+
+<div id="vTab">
+<table>
+<colgroup><col class="year"><col class="arch"><col class="tog"><col><col><col><col><col><col></colgroup>
+<thead><tr><th>Year</th><th>Arch</th><th></th><th>SIMD</th><th>SHA-256</th><th>SHA-3</th><th>SHA-512</th><th>AES</th><th>SM3/SM4</th></tr></thead>
+<tbody id="tb"></tbody>
+</table>
+</div>
+
+<div id="vTl" class="hide">
+  <div class="key"><span><i class="kx"></i>x86</span><span><i class="ka"></i>Arm</span><span>Hover or tap a marker for details; tap again to release.</span></div>
+  <svg id="tl" role="img" aria-label="Timeline of SIMD and crypto acceleration milestones"></svg>
+</div>
+<div class="tip" id="tip"></div>
+
+<footer>Selected milestones, 2010–2024. Specifications may describe optional features and precede hardware by years.</footer>
+
+<script>
+const YEARS=[...Array(15)].map((_,i)=>2010+i);
+const COLS=[['simd','SIMD'],['sha256','SHA-256'],['sha3','SHA-3'],['sha512','SHA-512'],['aes','AES'],['sm','SM3/SM4']];
+const E=[
+ [2011,'Arm','Arm — Armv8-A specified','Optional crypto extension: SHA-1, SHA-256, AES, polynomial multiply, all on 128-bit NEON registers. No hardware yet.','sha256 aes'],
+ [2013,'x86','Intel Haswell','AVX2: integer SIMD widened 128 → 256 bits. Also BMI2 (RORX), handy for scalar ARX code.','simd'],
+ [2013,'x86','Intel — SHA Extensions specified','SHA-1 and SHA-256: SHA256RNDS2, SHA256MSG1, SHA256MSG2 on 128-bit XMM registers. One hash per register set, not four lanes. No hardware yet.','sha256'],
+ [2013,'Arm','Apple A7','First widely shipped Armv8-A CPU with the crypto extension (SHA-256, SHA-1, AES).','sha256 aes'],
+ [2016,'x86','Intel Goldmont (Apollo Lake)','First hardware with SHA Extensions. An Atom-class part, not Core; mainstream Core CPUs would wait until 2019.','sha256'],
+ [2016,'x86','Intel Knights Landing (Xeon Phi)','AVX-512F: 512-bit vectors, 32 vector registers, packed 32-bit rotates, ternary logic.','simd'],
+ [2016,'Arm','Arm — Armv8.2-A crypto additions specified','SHA-512, SHA-3/Keccak helpers, SM3, SM4. No new SHA-256 operations.','sha3 sha512 sm'],
+ [2016,'Arm','Arm — SVE announced','Scalable vectors, 128–2048 bits per implementation. No crypto-specific operations.','simd'],
+ [2017,'x86','Intel Skylake-SP / -X / -W','AVX-512 reaches Xeon and HEDT. Note the gap: neither client Skylake (2015) nor these server parts had SHA Extensions, while the cheaper Goldmont parts did.','simd'],
+ [2017,'x86','AMD Zen','First AMD implementation of SHA Extensions. Vector execution was 128 bits wide.','sha256'],
+ [2019,'x86','Intel Ice Lake','First Core CPU with both AVX-512 and SHA Extensions; VAES / VPCLMULQDQ / GFNI widen AES-family work to 512 bits. SHA-256 instructions stay 128-bit.','simd sha256 aes'],
+ [2019,'x86','AMD Zen 2','Vector execution datapaths widened 128 → 256 bits. No AVX-512.','simd'],
+ [2019,'Arm','Arm — SVE2 announced (Armv9-A followed in 2021)','Optional scalable-vector AES, SHA-3 and SM4 operations. No scalable-vector SHA-256.','sha3 aes sm'],
+ [2022,'x86','AMD Zen 4','AVX-512 ISA (32 registers, rotates, ternary logic) executed on 256-bit datapaths.','simd'],
+ [2024,'x86','AMD Zen 5 (desktop/server)','Vector execution datapaths widened 256 → 512 bits. Mobile variants are narrower.','simd'],
+ [2024,'x86','Intel Lunar Lake / Arrow Lake','SHA-512, SM3, SM4 instructions. No new SHA-256 instructions; no AVX-512 exposed.','sha512 sm'],
+].map(([y,a,t,d,c])=>({y,a,t,d,c:new Set(c.split(' '))}));
+
+/* ---------- table ---------- */
+const checks=set=>COLS.map(([k])=>`<td class="${k==='simd'?'simd':''}">${set.has(k)?'<span class="chk">✓</span>':''}</td>`).join('');
+let html='';
+for(const y of YEARS){
+  const evs=E.filter(e=>e.y===y);
+  if(!evs.length){html+=`<tr class="quiet"><td class="year">${y}</td><td></td><td></td>${COLS.map(()=>'<td></td>').join('')}</tr>`;continue;}
+  const union=new Set(evs.flatMap(e=>[...e.c]));
+  const arch=[...new Set(evs.map(e=>e.a))].join(' · ');
+  const badge=evs.length>1?`<span class="n">${evs.length}</span>`:'';
+  html+=`<tr class="ev" data-y="${y}"><td class="year">${y}</td><td class="arch">${arch}</td><td><span class="tog">▸</span>${badge}</td>${checks(union)}</tr>`;
+  for(const e of evs){
+    if(evs.length>1) html+=`<tr class="sub hide" data-y="${y}"><td></td><td class="arch">${e.a}</td><td></td>${checks(e.c)}</tr>`;
+    html+=`<tr class="desc hide" data-y="${y}"><td colspan="9"><b>${e.t}</b> — ${e.d}</td></tr>`;
+  }
+}
+document.getElementById('tb').innerHTML=html;
+
+function setYear(y,open){
+  document.querySelectorAll(`tr.sub[data-y="${y}"],tr.desc[data-y="${y}"]`).forEach(r=>r.classList.toggle('hide',!open));
+  const ev=document.querySelector(`tr.ev[data-y="${y}"]`);
+  ev.querySelector('.tog').textContent=open?'▾':'▸';
+  ev.dataset.open=open?'1':'';
+}
+document.querySelectorAll('tr.ev').forEach(r=>r.addEventListener('click',()=>setYear(r.dataset.y,!r.dataset.open)));
+function setAll(open){document.querySelectorAll('tr.ev').forEach(r=>setYear(r.dataset.y,open));}
+
+/* ---------- timeline ---------- */
+const svg=document.getElementById('tl');
+const W=760,ML=64,MR=14,MT=10,MB=26,RH=34,H=MT+COLS.length*RH+MB;
+const xs=y=>ML+(y-2010+0.5)*(W-ML-MR)/YEARS.length;
+let s='';
+YEARS.forEach(y=>{s+=`<line class="tick" x1="${xs(y)}" x2="${xs(y)}" y1="${MT}" y2="${H-MB}"/><text class="yr" x="${xs(y)}" y="${H-8}">${y}</text>`;});
+COLS.forEach(([k,name],i)=>{const cy=MT+i*RH+RH/2;
+  s+=`<line class="lane" x1="${ML}" x2="${W-MR}" y1="${cy}" y2="${cy}"/><text class="lab" x="${ML-8}" y="${cy+4}" text-anchor="end">${name}</text>`;});
+const groups={};
+E.forEach((e,i)=>e.c.forEach(k=>{(groups[e.y+k]??=[]).push({e,i,k});}));
+Object.values(groups).forEach(g=>g.forEach((it,j)=>{
+  const ci=COLS.findIndex(c=>c[0]===it.k), cy=MT+ci*RH+RH/2, cx=xs(it.e.y)+(j-(g.length-1)/2)*13;
+  s+= it.e.a==='x86'
+    ? `<circle class="dot x86" data-i="${it.i}" cx="${cx}" cy="${cy}" r="6.5"/>`
+    : `<rect class="dot arm" data-i="${it.i}" x="${cx-6}" y="${cy-6}" width="12" height="12" rx="2"/>`;
+}));
+svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+svg.innerHTML=s;
+
+const tip=document.getElementById('tip');let pinned=null;
+function showTip(el,ev){
+  const e=E[el.dataset.i];
+  tip.innerHTML=`<b>${e.y} · ${e.a} — ${e.t}</b><br>${e.d}`;
+  tip.style.display='block';
+  const x=Math.min(ev.pageX+12,document.documentElement.clientWidth-tip.offsetWidth-8);
+  tip.style.left=x+'px';tip.style.top=(ev.pageY+14)+'px';
+}
+svg.addEventListener('mousemove',ev=>{if(pinned)return;const d=ev.target.closest('.dot');d?showTip(d,ev):tip.style.display='none';});
+svg.addEventListener('mouseleave',()=>{if(!pinned)tip.style.display='none';});
+svg.addEventListener('click',ev=>{const d=ev.target.closest('.dot');if(d&&pinned!==d){pinned=d;showTip(d,ev);}else{pinned=null;tip.style.display='none';}});
+
+/* ---------- view switch ---------- */
+function view(t){
+  document.getElementById('vTab').classList.toggle('hide',t!=='tab');
+  document.getElementById('vTl').classList.toggle('hide',t!=='tl');
+  document.getElementById('tabCtl').classList.toggle('hide',t!=='tab');
+  document.getElementById('bTab').classList.toggle('on',t==='tab');
+  document.getElementById('bTl').classList.toggle('on',t==='tl');
+  pinned=null;tip.style.display='none';
+}
+</script>
+</body>
+</html>
